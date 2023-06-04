@@ -42,7 +42,7 @@ class food : public Fl_Widget {
     food(int x, int y) : Fl_Widget{x, y, FOOD_SIZE, FOOD_SIZE} {}
     food(std::tuple<int, int> t) : Fl_Widget{std::get<0>(t), std::get<1>(t), FOOD_SIZE, FOOD_SIZE} {}
     virtual void draw() override {
-        fl_color(FL_BLACK);
+        fl_color(FL_RED);
         fl_begin_polygon();
         fl_arc(x(), y(), FOOD_SIZE / 2, 0, 360);
         fl_end_polygon();
