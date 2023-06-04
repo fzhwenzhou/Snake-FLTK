@@ -1,6 +1,6 @@
 # Simple Snake Game Implemented in C++ and FLTK
 
-## Environment Pre-requisite#
+## Environment Pre-requisite
 - A C++17 compatible compiler (tested on clang 14.0.3)
 - FLTK installed (tested on version 1.3.8)
 
@@ -16,4 +16,5 @@ clang++ main.cpp -o main $(/path/to/fltk-config --cxxflags --ldflags --libs)
 ```
 
 - MSVC
+
 Create a Visual Studio solution and copy all the files into the solution folder. Set the IncludePath and add "fltk.lib" to the linker dependencies. Then build the solution.
