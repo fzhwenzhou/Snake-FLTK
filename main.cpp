@@ -21,7 +21,7 @@ class main_window : public Fl_Window {
             fl_message("Hello, %s.", name);
             auto snake = new snake_window{name};
             snake->show();
-            real_window->hide();
+            delete real_window;
         }, this);
         Fl::scheme("plastic");
     }

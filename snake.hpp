@@ -1,89 +1,24 @@
 #ifndef SNAKE_HPP
 #define SNAKE_HPP
 
-#include <FL/Fl.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_Box.H>
 #include <FL/fl_message.H>
 #include <FL/fl_draw.H>
+
 #include <string_view>
 #include <fstream>
 #include <filesystem>
 #include <queue>
 #include <random>
 #include <tuple>
-#include <thread>
-#include <chrono>
+
+#include "maze.hpp"
+#include "object.hpp"
 
 using namespace std::chrono_literals;
 
-enum direction {LEFT = 65361, UP, RIGHT, DOWN};
-constexpr int SNAKE_SIZE = 24, FOOD_SIZE = 20;
-constexpr int PG_SIZE = 480, PG_X = 10, PG_Y = 50;
-bool occupied[PG_SIZE / SNAKE_SIZE][PG_SIZE / SNAKE_SIZE];
-
-bool reach_edge(int x, int y) {
-    return x < PG_X || y < PG_Y || x >= PG_X + PG_SIZE || y >= PG_Y + PG_SIZE;
-}
-
-auto gen_random_pos() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> distrib(0, PG_SIZE / SNAKE_SIZE - 1);
-    int x, y;
-    while (occupied[x = distrib(gen)][y = distrib(gen)]);
-    return std::make_tuple(x * SNAKE_SIZE + PG_X + FOOD_SIZE / 2,
-        y * SNAKE_SIZE + PG_Y + FOOD_SIZE / 2);
-}
-
-class food : public Fl_Widget {
-    public:
-    food() = delete;
-    food(int x, int y) : Fl_Widget{x, y, FOOD_SIZE, FOOD_SIZE} {}
-    food(std::tuple<int, int> t) : Fl_Widget{std::get<0>(t), std::get<1>(t), FOOD_SIZE, FOOD_SIZE} {}
-    virtual void draw() override {
-        fl_color(FL_RED);
-        fl_begin_polygon();
-        fl_arc(x(), y(), FOOD_SIZE / 2, 0, 360);
-        fl_end_polygon();
-    }
-
-};
-
-class square : public Fl_Widget {
-    public:
-    square() = delete;
-    square(int x, int y, int w, int h, Fl_Color border, Fl_Color fill)
-        : border{border}, fill{fill}, Fl_Widget{x, y, w, h} {}
-    virtual void draw() override {
-        fl_rectf(x(), y(), w(), h(), fill);
-        fl_rect(x(), y(), w(), h(), border);
-        fl_rect(x() + 1, y() + 1, w() - 2, h() - 2, border);
-    }
-
-    private:
-    Fl_Color border, fill;
-};
-
-class playground : public square {
-    public:
-    playground() = delete;
-    playground(int x, int y, int w, int h)
-        : square{x, y, w, h, FL_BLACK, FL_WHITE} {}
-};
-
-class snake : public square {
-    public:
-    snake() = delete;
-    snake(int x, int y) : square{x, y, SNAKE_SIZE, SNAKE_SIZE, FL_BLACK, FL_BLACK} {
-        occupied[(x - PG_X) / SNAKE_SIZE][(y - PG_Y) / SNAKE_SIZE] = true;
-        fprintf(stderr, "Constructed: %d, %d\n", x, y);
-    }
-    ~snake() {
-        occupied[(x() - PG_X) / SNAKE_SIZE][(y() - PG_Y) / SNAKE_SIZE] = false;
-        fprintf(stderr, "Destructed: %d, %d\n", x(), y());
-    }
-};
+#include "def.hpp"
 
 class snake_window : public Fl_Double_Window {
     public:
@@ -109,25 +44,56 @@ class snake_window : public Fl_Double_Window {
         Fl::add_timeout(0.5, run_snake, this);
     }
 
+    static bool reach_edge(int x, int y) {
+        return x < PG_X || y < PG_Y || x >= PG_X + PG_SIZE || y >= PG_Y + PG_SIZE;
+    }
+
+    static std::tuple<int, int> gen_random_pos() {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> distrib(0, PG_SIZE / SNAKE_SIZE - 1);
+        int x, y;
+        while (occupied[x = distrib(gen)][y = distrib(gen)]);
+        return std::make_tuple(x * SNAKE_SIZE + PG_X + FOOD_SIZE / 2,
+            y * SNAKE_SIZE + PG_Y + FOOD_SIZE / 2);
+    }
+
+    static double gen_timeout(int score) {
+        if (score < 6) {
+            return 0.5;
+        }
+        else if (score < 12) {
+            return 0.4;
+        }
+        else if (score < 16) {
+            return 0.3;
+        }
+        return 0.2;  
+    }
+
+    static auto next_pos(direction d, snake* cur) {
+        int x, y;
+        switch (d) {
+            case LEFT:
+                x = cur->x() - SNAKE_SIZE, y = cur->y();
+                break;
+            case UP:
+                x = cur->x(), y = cur->y() - SNAKE_SIZE;
+                break;
+            case RIGHT:
+                x = cur->x() + SNAKE_SIZE, y = cur->y();
+                break;
+            case DOWN:
+                x = cur->x(), y = cur->y() + SNAKE_SIZE;
+        }
+        return std::make_tuple(x, y);
+    }
+
     static void run_snake(void* window) {
         auto w = reinterpret_cast<snake_window*>(window);
         if (w->run) {
-            int x, y;
             auto cur = &w->snakes.back();
-            switch (w->d) {
-                case LEFT:
-                    x = cur->x() - SNAKE_SIZE, y = cur->y();
-                    break;
-                case UP:
-                    x = cur->x(), y = cur->y() - SNAKE_SIZE;
-                    break;
-                case RIGHT:
-                    x = cur->x() + SNAKE_SIZE, y = cur->y();
-                    break;
-                case DOWN:
-                    x = cur->x(), y = cur->y() + SNAKE_SIZE;
-            }
-            fprintf(stderr, "Next, %d, %d\n", x, y);
+            auto [x, y] = next_pos(w->d, cur);
             if (reach_edge(x, y) || occupied[(x - PG_X) / SNAKE_SIZE][(y - PG_Y) / SNAKE_SIZE]) {
                 fl_message_title("Game Over");
                 fl_message("Game over. Your score is %d.", w->score);
@@ -156,20 +122,7 @@ class snake_window : public Fl_Double_Window {
             w->add(w->snakes.back());
         }
         w->redraw();
-        double time_interval;
-        if (w->score < 6) {
-            time_interval = 0.5;
-        }
-        else if (w->score < 12) {
-            time_interval = 0.4;
-        }
-        else if (w->score < 16) {
-            time_interval = 0.3;
-        }
-        else {
-            time_interval = 0.2;
-        }
-        Fl::repeat_timeout(time_interval, run_snake, w);
+        Fl::repeat_timeout(gen_timeout(w->score), run_snake, w);
     }
 
     int handle(int event) override {
@@ -197,13 +150,13 @@ class snake_window : public Fl_Double_Window {
 
     // private:
     bool run;
-    direction d = UP;
+    direction d;
     std::string_view username;
     Fl_Box high_score_board{40, 10, 60, 20}, score_board{220, 10, 60, 20, "Score: 0"};
     playground pg{PG_X, PG_Y, PG_SIZE, PG_SIZE};
     std::queue<snake> snakes;
     food* foods = new food{gen_random_pos()};  
-    int high_score, score = 0;
+    int high_score, score = 0, level = 1;
 };
 
 #endif
