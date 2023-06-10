@@ -7,12 +7,12 @@
 ## Compile Guide
 - GCC
 ```sh
-g++ main.cpp -o main $(/path/to/fltk-config --cxxflags --ldflags --libs)
+g++ main.cpp -o main --std=c++17 $(/path/to/fltk-config --cxxflags --ldflags --libs)
 ```
 
 - Clang
 ```sh
-clang++ main.cpp -o main $(/path/to/fltk-config --cxxflags --ldflags --libs)
+clang++ main.cpp -o main --std=c++17 $(/path/to/fltk-config --cxxflags --ldflags --libs)
 ```
 
 - MSVC
