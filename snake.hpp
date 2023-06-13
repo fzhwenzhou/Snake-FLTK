@@ -6,7 +6,7 @@
 #include <FL/fl_message.H>
 #include <FL/fl_draw.H>
 
-#include <string_view>
+#include <string>
 #include <fstream>
 #include <filesystem>
 #include <queue>
@@ -17,35 +17,46 @@
 #include "object.hpp"
 
 using namespace std::chrono_literals;
+using namespace std::string_literals;
 
 #include "def.hpp"
 
 class snake_window : public Fl_Double_Window {
     public:
-    snake_window(std::string_view username) 
+    snake_window(std::string username) 
         : Fl_Double_Window{400, 150, 500, 550}, username{username} {
         this->copy_label("Snake Game");
         if (!std::filesystem::exists(username)) {
-            std::ofstream f{username};
-            f << 0 << std::endl;
+            auto f = fopen(username.c_str(), "w");
+            fprintf(f, "0\n");
+            fclose(f);
         }
-        std::ifstream f{username};
-        f >> high_score;
+        auto f = fopen(username.c_str(), "r");
+        fscanf(f, "%d", &high_score);
+        fclose(f);
         char buf[20];
         snprintf(buf, 20, "High Score: %d", high_score);
         high_score_board.labelsize(20);
         score_board.labelsize(20);
+        level_board.labelsize(20);
         high_score_board.copy_label(buf);
+        mz = new maze{1, this};
         // Generate a three-knot snake
-        for (int i = 0; i < 3; ++i) {
-            snakes.emplace(250, 314 - SNAKE_SIZE * i);
-        }
+        init_snake();
         Fl::scheme("plastic");
         Fl::add_timeout(0.5, run_snake, this);
     }
 
-    static bool reach_edge(int x, int y) {
-        return x < PG_X || y < PG_Y || x >= PG_X + PG_SIZE || y >= PG_Y + PG_SIZE;
+    void init_snake() {
+        while (!snakes.empty()) {
+            snakes.pop();
+        }
+        for (int i = 0; i < 3; ++i) {
+            snakes.emplace(250, 314 - SNAKE_SIZE * i);
+            this->add(snakes.back());
+        }
+        run = false;
+        d = UP;
     }
 
     static std::tuple<int, int> gen_random_pos() {
@@ -86,6 +97,18 @@ class snake_window : public Fl_Double_Window {
             case DOWN:
                 x = cur->x(), y = cur->y() + SNAKE_SIZE;
         }
+        if (x < PG_X) {
+            x = PG_X + PG_SIZE - SNAKE_SIZE;
+        }
+        if (y < PG_Y) {
+            y = PG_Y + PG_SIZE - SNAKE_SIZE;
+        }
+        if (x == PG_X + PG_SIZE) {
+            x = PG_X;
+        }
+        if (y == PG_Y + PG_SIZE) {
+            y = PG_Y;
+        }
         return std::make_tuple(x, y);
     }
 
@@ -94,32 +117,52 @@ class snake_window : public Fl_Double_Window {
         if (w->run) {
             auto cur = &w->snakes.back();
             auto [x, y] = next_pos(w->d, cur);
-            if (reach_edge(x, y) || occupied[(x - PG_X) / SNAKE_SIZE][(y - PG_Y) / SNAKE_SIZE]) {
-                fl_message_title("Game Over");
-                fl_message("Game over. Your score is %d.", w->score);
-                exit(0);
-            }
-            if (x + FOOD_SIZE / 2 == w->foods->x() && y + FOOD_SIZE / 2 == w->foods->y()) {
-                ++(w->score);
+            if (w->tun != nullptr && w->tun->x() == x && w->tun->y() == y) {
+                w->init_snake();
+                ++w->level;
+                w->level_board.copy_label(("Level: "s + std::to_string(w->level)).c_str());
+                delete w->mz;
+                w->mz = new maze{w->level % MAP_NUM == 0 ? MAP_NUM : w->level % MAP_NUM, w};
+                delete w->tun;
+                w->tun = nullptr;
                 delete w->foods;
                 w->foods = new food{gen_random_pos()};
                 w->add(w->foods);
-                char buf[20];
-                snprintf(buf, 20, "Score: %d", w->score);
-                w->score_board.copy_label(buf);
-                if (w->score > w->high_score) {
-                    w->high_score = w->score;
-                    snprintf(buf, 20, "High Score: %d", w->high_score);
-                    w->high_score_board.copy_label(buf);
-                    std::ofstream f{w->username};
-                    f << w->high_score;
-                }
             }
             else {
-                w->snakes.pop();
+                if (occupied[(x - PG_X) / SNAKE_SIZE][(y - PG_Y) / SNAKE_SIZE]) {
+                    fl_message_title("Game Over");
+                    fl_message("Game over. Your score is %d.", w->score);
+                    exit(0);
+                }
+                if (w->score / 8 >= w->level && w->tun == nullptr) {
+                    auto [x, y] = gen_random_pos();
+                    w->tun = new tunnel{x - FOOD_SIZE / 2, y - FOOD_SIZE / 2};
+                    w->add(w->tun);
+                }
+                if (x + FOOD_SIZE / 2 == w->foods->x() && y + FOOD_SIZE / 2 == w->foods->y()) {
+                    ++(w->score);
+                    delete w->foods;
+                    w->foods = new food{gen_random_pos()};
+                    w->add(w->foods);
+                    char buf[20];
+                    snprintf(buf, 20, "Score: %d", w->score);
+                    w->score_board.copy_label(buf);
+                    if (w->score > w->high_score) {
+                        w->high_score = w->score;
+                        snprintf(buf, 20, "High Score: %d", w->high_score);
+                        w->high_score_board.copy_label(buf);
+                        auto f = fopen(w->username.c_str(), "w");
+                        fprintf(f, "%d\n", w->high_score);
+                        fclose(f);
+                    }
+                }
+                else {
+                    w->snakes.pop();
+                }
+                w->snakes.emplace(x, y);
+                w->add(w->snakes.back());
             }
-            w->snakes.emplace(x, y);
-            w->add(w->snakes.back());
         }
         w->redraw();
         Fl::repeat_timeout(gen_timeout(w->score), run_snake, w);
@@ -150,12 +193,15 @@ class snake_window : public Fl_Double_Window {
 
     // private:
     bool run;
-    direction d;
-    std::string_view username;
-    Fl_Box high_score_board{40, 10, 60, 20}, score_board{220, 10, 60, 20, "Score: 0"};
+    direction d = UP;
+    std::string username;
+    Fl_Box high_score_board{200, 10, 60, 20}, score_board{350, 10, 60, 20, "Score: 0"};
+    Fl_Box level_board{60, 10, 60, 20, "Level: 1"};
     playground pg{PG_X, PG_Y, PG_SIZE, PG_SIZE};
     std::queue<snake> snakes;
-    food* foods = new food{gen_random_pos()};  
+    food* foods = new food{gen_random_pos()}; 
+    tunnel* tun = nullptr; 
+    maze* mz;
     int high_score, score = 0, level = 1;
 };
 
